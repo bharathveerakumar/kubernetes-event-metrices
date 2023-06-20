@@ -122,7 +122,7 @@ spec:
         name: site24x7-agent
         env:
           - name: KEY
-            value: us_38731c6460b4c3622042e10e98973337
+            value: <device-key>
           - name: installer
             value: kubernetes
           - name: NODE_IP
