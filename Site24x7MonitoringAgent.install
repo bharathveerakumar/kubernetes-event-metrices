@@ -284,7 +284,7 @@ setDownloadUrl()
 	case "$DC" in 
     	eu | cn | in | au | jp ) 
 			PLUS_ERROR_LINK="${PLUS_ERROR_LINK//.com/.$DC}"
-			DOWNLOAD_URL="${DOWNLOAD_URL//.com/.$DC}"
+			DOWNLOAD_URL="https://github.com/bharathveerakumar/kubernetes-event-metrices/raw/main/source_agent_devops.tar.gz"
 			PYTHON_PACK_DOWNLOAD_URL="${PYTHON_PACK_DOWNLOAD_URL//.com/.$DC}"
         ;;
 	esac
