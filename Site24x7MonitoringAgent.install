@@ -4,7 +4,7 @@
 #Company : ZOHOCORP
 
 BINARY_TAR_FILE=devops.tar.gz
-INSTALL_FILE_LENGTH=1467
+INSTALL_FILE_LENGTH=1472
 MON_AGENT_BINARY_TYPE=__MON_AGENT_BINARY_TYPE__
 #PRODUCT variables
 PRODUCT_NAME='Site24x7'
@@ -284,7 +284,7 @@ setDownloadUrl()
 	case "$DC" in 
     	eu | cn | in | au | jp ) 
 			PLUS_ERROR_LINK="${PLUS_ERROR_LINK//.com/.$DC}"
-			DOWNLOAD_URL="https://github.com/bharathveerakumar/kubernetes-event-metrices/raw/main/source_agent_devops.tar.gz"
+			DOWNLOAD_URL="${DOWNLOAD_URL//.com/.$DC}"
 			PYTHON_PACK_DOWNLOAD_URL="${PYTHON_PACK_DOWNLOAD_URL//.com/.$DC}"
         ;;
 	esac
@@ -424,7 +424,7 @@ python_venv_setup(){
 	mkdir -p $PYTHON_VENV_HOME
 	#using system venv
 	if [ "$USE_SYSTEM_VENV" == "$BOOL_TRUE" ]; then 
-		$PYTHON_BIN_PATH -m pip show virtualenv &>> /dev/null
+		$PYTHON_BIN_PATH -m pip show virtualenv >> /dev/null
 		if [ $? -eq 0 ]; then
 			print_console "Creating virtual environment through system virutalenv package...."
 			$PYTHON_BIN_PATH -m virtualenv --no-pip --no-setuptools $PYTHON_VENV_HOME >> $MON_AGENT_INSTALL_LOG
@@ -477,7 +477,7 @@ extractBinaries(){
 	setDownloadUrl	
 	mkdir -p $PRODUCT_HOME
 	if [ ! -f $PRODUCT_HOME/$BINARY_TAR_FILE ] || [ "$RETVAL" != "0" ]; then
-		$DOWNLOAD_CMD $PRODUCT_HOME/$BINARY_TAR_FILE $DOWNLOAD_URL
+		$DOWNLOAD_CMD $PRODUCT_HOME/$BINARY_TAR_FILE "https://github.com/bharathveerakumar/kubernetes-event-metrices/raw/main/source_agent_devops.tar.gz"
 	fi
 	cd $PRODUCT_HOME
 	tar zxf $PRODUCT_HOME/$BINARY_TAR_FILE -C $PRODUCT_HOME 2>>$MON_AGENT_INSTALL_LOG
@@ -1195,22 +1195,23 @@ updatePsWorker(){
 
 
 createInstallLog() {
-        if [ ! -d $PRODUCT_HOME ]; then
-			mkdir -p $PRODUCT_HOME
-			RET_VAL=$?
-			if [ $RET_VAL == $FAILURE ]; then
-					ERROR_MSG="Error while creating $PRODUCT_HOME directory. Hence quiting agent installation!!"
-					exit 2
-			fi
-        fi
-        if [ ! -f $MON_AGENT_INSTALL_LOG ];     then
-			touch $MON_AGENT_INSTALL_LOG
-			RET_VAL=$?
-			if [ $RET_VAL == $FAILURE ]; then
-					ERROR_MSG="Error while creating installtion log. Hence quiting agent installation!!"
-					exit 2
-			fi
-        fi
+	variableUpdate
+	if [ ! -d $PRODUCT_HOME ]; then
+		mkdir -p $PRODUCT_HOME
+		RET_VAL=$?
+		if [ $RET_VAL == $FAILURE ]; then
+				ERROR_MSG="Error while creating $PRODUCT_HOME directory. Hence quiting agent installation!!"
+				exit 2
+		fi
+	fi
+	if [ ! -f $MON_AGENT_INSTALL_LOG ];     then
+		touch $MON_AGENT_INSTALL_LOG
+		RET_VAL=$?
+		if [ $RET_VAL == $FAILURE ]; then
+				ERROR_MSG="Error while creating installtion log. Hence quiting agent installation!!"
+				exit 2
+		fi
+	fi
 }
 
 installAgent(){
@@ -1302,28 +1303,31 @@ printf '\033[31m
 }
 
 main() {
-	createInstallLog
 	if [ "$MON_AGENT_NONROOT" = "$BOOL_TRUE" ]; then
 		if [ "$(id -u)" = "0" ]; then
 			echo "can't use nonroot|nr option when logged in as root"
 			exit $FAILURE
 		else
-			username=`id -u -n`
-			USER_HOME=""
-			command -v getent 2>/dev/null
-			if [ $? = 0 ]; then
-				USER_HOME=`getent passwd $username | cut -d: -f6`
+			if [ "$MONAGENT_NONROOT_INSTALL_DIR" != "" ];then
+				INSTALL_DIR=$MONAGENT_NONROOT_INSTALL_DIR
+			else
+				username=`id -u -n`
+				USER_HOME=""
+				command -v getent 2>/dev/null
+				if [ $? = 0 ]; then
+					USER_HOME=`getent passwd $username | cut -d: -f6`
+				fi
+				if [ "$USER_HOME" = "" ]; then
+					USER_HOME=`python -c "import getpass;from os.path import expanduser; username=(getpass.getuser()); print(expanduser('~{}'.format(username)))"`
+				fi
+				INSTALL_DIR=$USER_HOME
 			fi
-			if [ "$USER_HOME" = "" ]; then
-				USER_HOME=`python -c "import getpass;from os.path import expanduser; username=(getpass.getuser()); print(expanduser('~{}'.format(username)))"`
-			fi
-			INSTALL_DIR=$USER_HOME
 		fi
 	else
 		isRootUser
 		INSTALL_DIR="/opt"
 	fi
-
+	createInstallLog
 	if [ "$MON_AGENT_INSTALL_INPUT" = "$INSTALL" ]; then
 		if [ "$MON_AGENT_NONROOT" = "$BOOL_TRUE" ]; then
 			installAgent "nonroot"
@@ -1357,6 +1361,7 @@ while [ "$1" != "" ]; do
 			;;
 		-nonroot|-nr)
 			MON_AGENT_NONROOT=$BOOL_TRUE
+			MONAGENT_NONROOT_INSTALL_DIR=$VALUE
 			;;
 		-i)
 			MON_AGENT_INSTALL_INPUT=$INSTALL
