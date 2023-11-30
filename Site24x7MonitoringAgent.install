@@ -4,7 +4,7 @@
 #Company : ZOHOCORP
 
 BINARY_TAR_FILE=devops.tar.gz
-INSTALL_FILE_LENGTH=1472
+INSTALL_FILE_LENGTH=1508
 MON_AGENT_BINARY_TYPE=__MON_AGENT_BINARY_TYPE__
 #PRODUCT variables
 PRODUCT_NAME='Site24x7'
@@ -30,7 +30,7 @@ MON_AGENT_HOME=$PRODUCT_HOME/$MON_AGENT_NAME
 OS_NAME=`uname -s`
 OS_BINARY_TYPE=''
 INSTALL_SCRIPT_NAME=$(basename $0)
-AGENT_VERSION=19.1.1
+AGENT_VERSION=19.4.0
 
 #Set Path
 PATH=/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin:/usr/local/sbin:/usr/sfw/bin:$PATH
@@ -148,14 +148,14 @@ else
     COMMAND_CHECKER="command -v"
 fi
 
-if [ $(command -v curl) ]; then
-    DOWNLOAD_CMD="curl -Lo"
-    DOWNLOAD_CMD_WITHOUT_PARAMS="curl -O"
-    print_console "Download utility :: curl detected"
-elif [ $(command -v wget) ]; then
+if [ $(command -v wget) ]; then
     DOWNLOAD_CMD="wget -O"
     DOWNLOAD_CMD_WITHOUT_PARAMS="wget"
     print_console "Download utility :: wget detected"
+elif [ $(command -v curl) ]; then
+    DOWNLOAD_CMD="curl -Lo"
+    DOWNLOAD_CMD_WITHOUT_PARAMS="curl -O"
+    print_console "Download utility :: curl detected"
 elif [ $(command -v fetch) ]; then
     DOWNLOAD_CMD="fetch -o"
     DOWNLOAD_CMD_WITHOUT_PARAMS="fetch"
@@ -256,6 +256,11 @@ MON_AGENT_GROUP=$PRODUCT_NAME_LOWERCASE'-group'
 MON_AGENT_USER=$PRODUCT_NAME_LOWERCASE'-agent'
 MON_AGENT_SETTINGS_FILE=$MON_AGENT_CONF_DIR/settings.cfg
 }
+NOLOGIN_PATH=`$COMMAND_CHECKER nologin`
+if [ $? != 0 ]; then
+    NOLOGIN_PATH="/usr/sbin/nologin"
+fi
+
 #Init system variables
 INIT_SYSTEM=""
 INIT_FOLDER=""
@@ -280,13 +285,18 @@ PLUS_ERROR_LINK="https://plus.site24x7.com/plus/RemoteInstallerUsingSSH?custID="
 
 setDownloadUrl()
 {	
-	DC="${MON_AGENT_API_KEY:0:2}"
-	case "$DC" in 
-    	eu | cn | in | au | jp ) 
-			PLUS_ERROR_LINK="${PLUS_ERROR_LINK//.com/.$DC}"
-			DOWNLOAD_URL="${DOWNLOAD_URL//.com/.$DC}"
-			PYTHON_PACK_DOWNLOAD_URL="${PYTHON_PACK_DOWNLOAD_URL//.com/.$DC}"
+	DC=`echo $MON_AGENT_API_KEY | awk '{print substr($0,1,2)}'`
+	case "$DC" in
+    	eu | cn | in | jp | uk | ca | sa )
+			SERVER=`echo $SERVER | sed "s/com/$DC/g"`
+			DOWNLOAD_URL=`echo $DOWNLOAD_URL | sed "s/com/$DC/g"`
+			PYTHON_PACK_DOWNLOAD_URL=`echo $PYTHON_PACK_DOWNLOAD_URL | sed "s/com/$DC/g"`
         ;;
+		au )
+			SERVER=`echo $SERVER | sed "s/com/net.$DC/g"`
+			DOWNLOAD_URL=`echo $DOWNLOAD_URL | sed "s/com/net.$DC/g"`
+			PYTHON_PACK_DOWNLOAD_URL=`echo $PYTHON_PACK_DOWNLOAD_URL | sed "s/com/net.$DC/g"`
+		;;
 	esac
 }
 
@@ -325,7 +335,7 @@ generateUninstallFile()
 	$userdel $MON_AGENT_USER 2>/dev/null
 	$groupdel $MON_AGENT_GROUP 2>/dev/null 
 	echo \"Site24x7 monitoring agent uninstalled successfully\"" > $1
-	chmod 755 $1 2>$MON_AGENT_INSTALL_LOG
+	chmod 755 $1 2>>$MON_AGENT_INSTALL_LOG
 }
 
 generateNonRootUninstallFile()
@@ -346,7 +356,7 @@ generateNonRootUninstallFile()
 	$userdel $MON_AGENT_USER 2>/dev/null
 	$groupdel $MON_AGENT_GROUP 2>/dev/null
 	echo \"Site24x7 monitoring agent uninstalled successfully\"" > $1
-	chmod 755 $1 2>$MON_AGENT_INSTALL_LOG
+	chmod 755 $1 2>>$MON_AGENT_INSTALL_LOG
 }
 log() {
 	echo $(date +"%F %T.%N") "    $1" >> $MON_AGENT_INSTALL_LOG 2>&1
@@ -566,7 +576,7 @@ check_python_attendance(){
 			exit $FAILURE
 		fi
 	else
-		python_possible_paths=('/usr/bin/python' '/usr/bin/python3' '/usr/local/bin/python' '/usr/local/bin/python3' '/opt/homebrew/bin/python3')
+		python_possible_paths=('/usr/bin/python' '/usr/bin/python3' '/usr/local/bin/python' '/usr/local/bin/python3' '/opt/homebrew/bin/python3' '/opt/freeware/bin/python3' '/opt/freeware/bin/python')
 		for item in ${python_possible_paths[@]}; do
 			if command -v $item >/dev/null; then
 				minor_ver=$(${item} -c "import sys; print(sys.version_info[1] if sys.version_info[0] == 3 else -2)")
@@ -791,15 +801,28 @@ updateConfFiles() {
 	fi
 	if [ "$MON_AGENT_TAGS" != "" ]; then
         log "Updating tags configuration in the conf file : $MON_AGENT_TAGS"
-        findAndReplace "s@tags = 0@tags = $MON_AGENT_TAGS@g" $MON_AGENT_CONF_FILE
+        sed "s/tags = 0/tags = $MON_AGENT_TAGS/" $MON_AGENT_CONF_FILE > $NEW_MON_AGENT_CONF_FILE
+		mv $NEW_MON_AGENT_CONF_FILE $MON_AGENT_CONF_FILE
 	fi
 	if [ "$MON_AGENT_LOCAL_SETUP" != "" ]; then
         log "Updating production configuration in the conf file : $MON_AGENT_LOCAL_SETUP"
-        findAndReplace "s@production = 1@production = 0@g" $MON_AGENT_CONF_FILE
+        sed "s/production = 1/production = 0/" $MON_AGENT_CONF_FILE > $NEW_MON_AGENT_CONF_FILE
+		mv $NEW_MON_AGENT_CONF_FILE $MON_AGENT_CONF_FILE
 	fi
 	if [ "$MON_AGENT_NEW_KEY" == "$BOOL_TRUE" ]; then
 		log "Updating new key flag"
-		findAndReplace "s@site24x7 = SITE24X7@site24x7 = SITE24X7NEW@g" $MON_AGENT_CONF_FILE
+		sed "s/site24x7 = SITE24X7/site24x7 = SITE24X7NEW/" $MON_AGENT_CONF_FILE > $NEW_MON_AGENT_CONF_FILE
+		mv $NEW_MON_AGENT_CONF_FILE $MON_AGENT_CONF_FILE
+	fi
+	if [ "$CPU_LIMIT" != "" ]; then
+        log "Updating CPU limit in the watchdog conf file : $CPU_LIMIT"
+		sed "s/CPU = 25/CPU = $CPU_LIMIT/" $MON_AGENT_WATCHDOG_CONF_FILE > $NEW_MON_AGENT_CONF_FILE
+		mv $NEW_MON_AGENT_CONF_FILE $MON_AGENT_WATCHDOG_CONF_FILE
+	fi
+	if [ "$MEM_LIMIT" != "" ]; then
+        log "Updating memory limit in the watchdog conf file : $MEM_LIMIT"
+		sed "s/MEMORY = 5/MEMORY = $MEM_LIMIT/" $MON_AGENT_WATCHDOG_CONF_FILE > $NEW_MON_AGENT_CONF_FILE
+		mv $NEW_MON_AGENT_CONF_FILE $MON_AGENT_WATCHDOG_CONF_FILE
 	fi
 
 }
@@ -867,6 +890,13 @@ setupInitFiles(){
 		cp  $MON_AGENT_BIN_BOOT_SERVICE_FILE $INIT_FOLDER/site24x7monagent
 	elif [ "${INIT_FOLDER}" = "${SYSTEMD_INIT_FOLDER}" ]; then
 		cp $MON_AGENT_SYSTEMD_BIN_BOOT_SERVICE_FILE $INIT_FOLDER/site24x7monagent.service
+	  if [ "$MON_AGENT_SWITCH_USER" == "$SUCCESS" ]; then
+      sed -i '/User=/c\User=site24x7-agent' $MON_AGENT_SYSTEMD_BIN_BOOT_SERVICE_FILE
+      sed -i '/Group=/c\Group=site24x7-group' $MON_AGENT_SYSTEMD_BIN_BOOT_SERVICE_FILE
+    else
+      sed -i '/User=/c\User=root' $MON_AGENT_SYSTEMD_BIN_BOOT_SERVICE_FILE
+      sed -i '/Group=/c\Group=root' $MON_AGENT_SYSTEMD_BIN_BOOT_SERVICE_FILE
+    fi
 	fi
 }
 
@@ -1078,14 +1108,14 @@ addUserAndGroup(){
 	ADDUSER_ERROR_FLAG=$BOOL_FALSE
 	if [ "$OS_NAME" = "FreeBSD" ]; then
     	pw groupadd $MON_AGENT_GROUP >> $MON_AGENT_INSTALL_LOG 2>/dev/null
-    	pw useradd $MON_AGENT_USER -d $MON_AGENT_HOME -c $MON_AGENT_USER -s /bin/sh 2>/dev/null
+    	pw useradd $MON_AGENT_USER -d $MON_AGENT_HOME -c $MON_AGENT_USER -s $NOLOGIN_PATH 2>/dev/null
 	else
 		WARNING_FLAG=$BOOL_FALSE
 		command_test groupadd "optional"
 		command_test useradd "optional"
 		if [ "$WARNING_FLAG" = "$BOOL_FALSE" ]; then
 			groupadd $MON_AGENT_GROUP 2>/dev/null
-			useradd -r -d $MON_AGENT_HOME -c $MON_AGENT_USER -s /bin/bash $MON_AGENT_USER 2>/dev/null
+			useradd -r -d $MON_AGENT_HOME -c $MON_AGENT_USER -s $NOLOGIN_PATH $MON_AGENT_USER 2>/dev/null
 		fi
 	fi
 	if [ "$OS_NAME" = "AIX" ]; then
@@ -1459,6 +1489,12 @@ while [ "$1" != "" ]; do
          	;;
 		-python)
 			INPUT_PYTHON=$VALUE
+			;;
+		-cpu_limit)
+			CPU_LIMIT=$VALUE
+			;;
+		-mem_limit)
+			MEM_LIMIT=$VALUE
 			;;
 		*)
 			log $ECHO_RPRINT "Unknown installation parameter : $PARAM"
