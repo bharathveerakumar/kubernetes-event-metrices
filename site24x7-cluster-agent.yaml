@@ -1,0 +1,181 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: site24x7
+  namespace: site24x7
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: site24x7
+rules:
+- apiGroups: [""]
+  resources:
+  - configmaps
+  - nodes
+  - pods
+  - services
+  - resourcequotas
+  - replicationcontrollers
+  - limitranges
+  - persistentvolumeclaims
+  - persistentvolumes
+  - namespaces
+  - endpoints
+  - componentstatuses
+  - events
+  verbs: ["list", "watch"]
+- apiGroups: ["extensions"]
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - ingresses
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs: ["list", "watch"]
+- apiGroups: ["events.k8s.io"]
+  resources:
+  - events
+  verbs: ["list","watch"]
+- apiGroups: ["batch"]
+  resources:
+  - cronjobs
+  - jobs
+  verbs: ["list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources:
+  - horizontalpodautoscalers
+  verbs: ["list", "watch"]
+- apiGroups: ["policy"]
+  resources:
+  - poddisruptionbudgets
+  verbs: ["list", "watch"]
+- apiGroups: ["certificates.k8s.io"]
+  resources:
+  - certificatesigningrequests
+  verbs: ["list", "watch"]
+- apiGroups:  # Kubelet connectivity
+  - ""
+  resources:
+  - nodes/metrics
+  - nodes/stats
+  - nodes/metrics/cadvisor
+  - nodes/proxy
+  verbs:
+  - get
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: site24x7
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: site24x7
+subjects:
+- kind: ServiceAccount
+  name: site24x7
+  namespace: site24x7
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site24x7-cluster-agent
+  namespace: site24x7
+  labels:
+    app.kubernetes.io/name: site24x7-cluster-agent
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/owner: site24x7
+    app.kubernetes.io/version: 1.0.0
+spec:
+  ports:
+  - name: http-metrics
+    port: 5000
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: site24x7-cluster-agent
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site24x7-cluster-agent
+  namespace: site24x7
+  labels:
+    app.kubernetes.io/name: site24x7-cluster-agent
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/owner: site24x7
+    app.kubernetes.io/version: 1.0.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: site24x7-cluster-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: site24x7-cluster-agent
+      name: site24x7-cluster-agent
+    spec:
+      serviceAccountName: site24x7
+      containers:
+      - image: bharathveerakumar/site24x7-cluster-agent:integrations
+        imagePullPolicy: Always
+        name: site24x7-cluster-agent
+        env:
+          - name: NODE_IP
+            valueFrom:
+              fieldRef:
+                  fieldPath: status.hostIP
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: CLUSTER_AGENT
+            value: "true"
+        ports:
+          - containerPort: 5000
+            name: http-metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001010001
+        livenessProbe:
+          httpGet:
+            path: /ca/health_check
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          failureThreshold: 5
+          timeoutSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /ca/health_check
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 5
+          timeoutSeconds: 10
+---
