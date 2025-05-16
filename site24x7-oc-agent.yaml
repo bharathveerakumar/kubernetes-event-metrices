@@ -532,6 +532,11 @@ spec:
           - name: etcfs
             mountPath: /host/etc/
             readOnly: true
+          - name: site24x7-agent
+            mountPath: /opt/site24x7/
+          - name: clusterconfig
+            mountPath: /etc/site24x7/clusterconfig
+            readOnly: true
       volumes:
         - hostPath:
             path: /proc
@@ -545,4 +550,10 @@ spec:
         - hostPath:
             path: /etc/
           name: etcfs
+        - emptyDir: {}
+          name: site24x7-agent
+        - configMap:
+            name: site24x7
+            optional: true
+          name: clusterconfig
 ---
